@@ -115,18 +115,22 @@ def adjust(n,k,U,C,M):
     for l in range(k):
 #         Th=1
         loss_min = float('inf')
-        if  M[l][l] >= 1/k:
-            for Th in np.arange(0.01,1,0.05):
-                sum_estimated = np.zeros(k)
-                for i in partition[l]:
-                    sum_estimated += freez_func(U[i],Th) * freez_func(U[i],Th)
-                loss_tmp = la.norm(M[l]-sum_estimated/len(partition[l]))
-                if loss_tmp < loss_min:
-                    loss_min = loss_tmp
-                    Th_min = Th
+     #   if  M[l][l] >= 1/k:
+        for Th in np.arange(0.01,1,0.05):
+            sum_estimated = np.zeros(k)
             for i in partition[l]:
-                U[i] = freez_func(U[i],Th_min)
-                U_prime[i] = U[i]
+                sum_estimated += freez_func(U[i],Th) * freez_func(U[i],Th)
+            loss_tmp = la.norm(M[l]-sum_estimated/len(partition[l]))
+            if loss_tmp < loss_min:
+                loss_min = loss_tmp
+                Th_min = Th
+            # note from Suren: I am adding this because I was getting no Th_min because the threshold was not improved
+            if 'Th_min' not in locals():
+                Th_min = 1.0
+        for i in partition[l]:
+            U[i] = freez_func(U[i],Th_min)
+            U_prime[i] = U[i]
+        """    
         else:
             for Th in np.arange(0.01,1,0.05):
                 sum_estimated = np.zeros(k)
@@ -139,7 +143,8 @@ def adjust(n,k,U,C,M):
             for i in partition[l]:
                 U[i] = freez_func(U[i],Th_min)
                 U_prime[i] = inverse(U[i],l)
-#         print(Th_min)
+#         print(Th_min)"
+        """
     return U, U_prime
         
 def edge_construction(n, U, k, U_prime, step, theta, r):
@@ -157,6 +162,8 @@ def edge_construction(n, U, k, U_prime, step, theta, r):
         count = 0
         ng_list = set([i])
         while count < r and degree_list[i] < theta[i]:
+            if not np.isfinite(U_[i]).all() or np.sum(U_[i]) == 0: # I am adding this because it said my weights are infinite
+                U_[i] = np.ones(k) / k  # fix weights on the fly
             to_classes = random.choices(list(range(0,k)), k=int(theta[i]-degree_list[i]), weights=U_[i])
             for to_class in to_classes:
                 for loop in range(50):
@@ -295,7 +302,7 @@ def edge_construction_wo_ITS(n, U, k, U_primeT, theta, r):
 ##########################################################################################
     
     
-def gencat(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False):
+def gencat(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False, sens=None):
     # node degree generation 
     theta = node_deg(n,m,max_deg)
 #     line_warn(sum(theta)/2)
@@ -436,7 +443,7 @@ def class_reproduction(k,S,Label):
     
     return M,D,com_size
             
-def gencat_reproduction(S,Label,H,d,n=0,m=0,max_deg=0,omega=0.2,r=50,step=100,att_type="normal"):
+def gencat_reproduction(S,Label,H,d,n=0,m=0,max_deg=0,omega=0.2,r=50,step=100,att_type="normal", sens=None):
 
     # node degree generation 
     if n == 0:
@@ -474,7 +481,7 @@ def gencat_reproduction(S,Label,H,d,n=0,m=0,max_deg=0,omega=0.2,r=50,step=100,at
     # Attribute generation
     X = attribute_generation(n,d,k,U,V,C,omega,att_type)
     
-    return S_gen,X,C
+    return S_gen,X,C, sens
 
 
 ##########################################################################################
