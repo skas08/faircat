@@ -9,8 +9,7 @@ import powerlaw
 import warnings
 warnings.simplefilter('ignore')
 
-def node_deg(n,m,max_deg):
-    p = 3.
+def node_deg(n,m,max_deg, p=0.3): 
     simulated_data = [0]
     while sum(simulated_data)/2 < m:
         theoretical_distribution = powerlaw.Power_Law(xmin = 1., parameters = [p])
