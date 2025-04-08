@@ -458,9 +458,9 @@ def gencat_reproduction(S,Label,H,d,n=0,m=0,max_deg=0,omega=0.2,r=50,step=100,at
     n = len(theta)
     m = count_node_degree(S)
     k = len(set(Label))
-    step = 1/(n*step)
+    step = 1/(n*step) # for inverse transform sampling which is to sample target classes when generating edges (connection proportions)
     
-    # class feature extraction
+    # class feature extraction (how class behaves in connections)
     M,D,com_size = class_reproduction(k,S,Label)
     
     # latent factor generation
