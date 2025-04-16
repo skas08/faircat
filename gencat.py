@@ -8,6 +8,7 @@ import sys
 import powerlaw
 import warnings
 warnings.simplefilter('ignore')
+from collections import Counter
 
 def node_deg(n,m,max_deg, p=0.3): 
     simulated_data = [0]
@@ -30,6 +31,48 @@ def node_deg(n,m,max_deg, p=0.3):
             break
     print("expected number of edges : ",sum(simulated_data)/2)
     return sorted(simulated_data,reverse=True)
+
+def node_deg_by_group(attr, n, m, max_deg, p_by_group):
+    groups = np.unique(attr)
+
+    # Allocate edge budget proportionally
+    group_sizes = {g: np.sum(attr == g) for g in groups}
+    group_edge_budgets = {g: int(m * (group_sizes[g] / n)) for g in groups}
+
+    for g in groups:
+        idx = np.where(attr == g)[0]
+        n_g = len(idx)
+        m_g = group_edge_budgets[g]
+        p = p_by_group[g]
+
+        simulated_data = [0]
+        while sum(simulated_data) / 2 < m_g:
+            dist = powerlaw.Power_Law(xmin=1., parameters=[p])
+            simulated_data = dist.generate_random(n_g)
+
+            # Resample only those over max_deg
+            over_list = np.where(simulated_data > max_deg)[0]
+            while len(over_list) != 0:
+                add_deg = dist.generate_random(len(over_list))
+                for i, node_id in enumerate(over_list):
+                    simulated_data[node_id] = add_deg[i]
+                over_list = np.where(simulated_data > max_deg)[0]
+
+            simulated_data = np.round(simulated_data)
+
+            # Reduce p gradually
+            if (m_g - sum(simulated_data) / 2) < m_g / 5:
+                p -= 0.01
+            else:
+                p -= 0.1
+            if p < 1.01:
+                print(f"group {g} → break (p too small)")
+                break
+
+    print("expected number of edges : ",sum(simulated_data)/2)
+    return sorted(simulated_data,reverse=True)
+
+
 
 
 def count_node_degree(S):
@@ -119,7 +162,7 @@ def adjust(n,k,U,C,M):
             sum_estimated = np.zeros(k)
             for i in partition[l]:
                 sum_estimated += freez_func(U[i],Th) * freez_func(U[i],Th)
-            loss_tmp = la.norm(M[l]-sum_estimated/len(partition[l]))
+            loss_tmp = la.norm(M[l]-sum_estimated/len(partition[l])) # M[l] represents the target (desired) class connection behavior
             if loss_tmp < loss_min:
                 loss_min = loss_tmp
                 Th_min = Th
@@ -166,7 +209,7 @@ def edge_construction(n, U, k, U_prime, step, theta, r):
             to_classes = random.choices(list(range(0,k)), k=int(theta[i]-degree_list[i]), weights=U_[i])
             for to_class in to_classes:
                 for loop in range(50):
-                    j = U_prime[to_class][int(random.random()/step)]
+                    j = U_prime[to_class][min(int(random.random() / step), len(U_prime[to_class]) - 1)] #clamping the index so that there is no overshooting?? tbh idk
                     if j not in ng_list:
                         ng_list.add(j)
                         break
@@ -229,10 +272,10 @@ def attribute_generation(n,d,k,U,V,C,omega,att_type):
 
     def variation_attribute(n,d,k,X,C,att_type):
         if att_type == "normal":
-            for i in range(d): # each attribute demension
-                clus_dev = np.random.uniform(omega,omega,k) # variation for each class
+            for i in range(d): # each attribute
+                clus_dev = np.random.uniform(omega,omega,k) # variation for each class but since high=low=omega, variation is always omega for each class
                 for p in range(n): # each node
-                    X[p,i] += np.random.normal(0.0,clus_dev[C[p]],1)
+                    X[p,i] += np.random.normal(0.0,clus_dev[C[p]],1) # (mean of the dist, sd, output shape, return 1 sample)
             # normalization
             for i in range(d):
                 X[:,i] -= min(X[:,i])
@@ -240,7 +283,7 @@ def attribute_generation(n,d,k,U,V,C,omega,att_type):
         else: # Bernoulli distribution
             for i in range(d):
                 for p in range(n):
-                    X[p,i] = bernoulli.rvs(p=X[p,i], size=1)       
+                    X[p,i] = bernoulli.rvs(p=0.3, size=1)   # The value of attribute i for node p is 1 with probability X[p,i] and 0 otherwise.    
         return X
     return variation_attribute(n,d,k,X,C,att_type)
 
@@ -291,6 +334,10 @@ def edge_construction_wo_ITS(n, U, k, U_primeT, theta, r):
                     degree_list[i]+=1;degree_list[j]+=1
             count += 1 
         count_list.append(count)
+    print("=== Degree comparison (actual vs target theta) ===")
+    for i in range(n):
+        print(f"Node {i}: degree = {degree_list[i]}, theta = {theta[i]}")
+
     return S, count_list
     
 
@@ -301,7 +348,7 @@ def edge_construction_wo_ITS(n, U, k, U_primeT, theta, r):
 ##########################################################################################
     
     
-def gencat(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False, sens=None):
+def gencat(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False):
     # node degree generation 
     theta = node_deg(n,m,max_deg)
 #     line_warn(sum(theta)/2)
@@ -330,12 +377,26 @@ def gencat(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_type="norma
         
     print("number of generated edges : " + str(count_node_degree(S_gen)))
 
-    V = adjust_att(n,k,d,U,C,H)
+    V = adjust_att(n,k,d,U,C,H) 
     
     # Attribute generation
     X = attribute_generation(n,d,k,U,V,C,omega,att_type)
     
     return S_gen,X,C
+    """
+    # Attribute generation
+    X = attribute_generation(n,d,k,U,V,C,omega,att_type)
+    # Compute degrees from the sparse adjacency matrix
+    degrees = np.array(S_gen.sum(axis=1)).flatten()
+
+    # Compute degree histogram per group
+    grouped_degree_distribution = {}
+    for g in np.unique(attribute):
+        group_degrees = degrees[attribute == g]
+        grouped_degree_distribution[int(g)] = dict(Counter(group_degrees))
+        
+    return S_gen,X,C, grouped_degree_distribution
+    """
     
 ##########################################################################################
 ##########################################################################################
@@ -520,3 +581,42 @@ def gencat_only_att(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_ty
         X_not[:,i] /= max(X_not[:,i])
     
     return S_gen,X,X_not,C
+
+
+
+##################for per attribute value generation##########################
+def gencat_by_attribute(n,m,k,d,max_deg,M,D,H,attribute,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False, p_by_group=None):
+    # node degree generation
+    theta = node_deg_by_group(attribute, n, m, max_deg, p_by_group)
+#     line_warn(sum(theta)/2)
+    
+    # class generation
+    com_size = com_size_gen(k,phi_c)
+    U,C,density = latent_factor_gen(n,k,M,D,com_size)
+    
+    # adjusting phase
+    if not woAP:
+        U,U_prime = adjust(n,k,U,C,M)
+    else:
+        print("woAP") 
+        U_prime = adjust_woAP(n,k,U,C,M)
+    
+    # Inverse Transform Sampling
+    if not woITS:
+        step = 1/(n*step)
+        U_prime_CDF = ITS_U_prime(n,k,U_prime,step)
+
+        # Edge generation
+        S_gen, count_list = edge_construction(n, U, k, U_prime_CDF, step, theta, r)
+    else:
+        print("woITS")
+        S_gen, count_list = edge_construction_wo_ITS(n, U, k, U_prime.T, theta, r)
+        
+    print("number of generated edges : " + str(count_node_degree(S_gen)))
+
+    V = adjust_att(n,k,d,U,C,H) #I cant use it if I want more attribute values and k=1
+    
+    # Attribute generation
+    X = attribute_generation(n,d,k,U,V,C,omega,att_type)
+    
+    return S_gen,X,C
