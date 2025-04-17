@@ -36,14 +36,31 @@ def node_deg_by_group(attr, n, m, max_deg, p_by_group):
     groups = np.unique(attr)
 
     # Allocate edge budget proportionally
-    group_sizes = {g: np.sum(attr == g) for g in groups}
+    group_sizes = {g: np.sum(attr == g) for g in groups} # size of each attribute value group
     group_edge_budgets = {g: int(m * (group_sizes[g] / n)) for g in groups}
+
+    theta_full = np.zeros(n)  # <--- this stores degrees for all nodes
+
+    # Adjust group_edge_budgets so total doesn't exceed m
+    total_allocated = sum(group_edge_budgets.values())
+    if total_allocated > m:
+        # Reduce from the largest group(s) until it fits
+        excess = total_allocated - m
+        sorted_groups = sorted(group_edge_budgets.items(), key=lambda x: -x[1])
+        for g, _ in sorted_groups:
+            if excess == 0:
+                break
+            reduction = min(excess, group_edge_budgets[g])
+            group_edge_budgets[g] -= reduction
+            excess -= reduction
 
     for g in groups:
         idx = np.where(attr == g)[0]
         n_g = len(idx)
         m_g = group_edge_budgets[g]
+        print(m_g)
         p = p_by_group[g]
+        print(p)
 
         simulated_data = [0]
         while sum(simulated_data) / 2 < m_g:
@@ -68,9 +85,11 @@ def node_deg_by_group(attr, n, m, max_deg, p_by_group):
             if p < 1.01:
                 print(f"group {g} → break (p too small)")
                 break
+            print("expected number of edges for group", g, ":", sum(simulated_data) / 2)
+            theta_full[idx] = simulated_data  # <--- assign values to correct nodes
 
+    return theta_full.tolist()  # <--- return degree list for all n nodes
     print("expected number of edges : ",sum(simulated_data)/2)
-    return sorted(simulated_data,reverse=True)
 
 
 
@@ -328,10 +347,15 @@ def edge_construction_wo_ITS(n, U, k, U_primeT, theta, r):
        
         while count < r and degree_list[i] < theta[i]:
             to_nodes = random.choices(list(range(0,n)), k=int(theta[i]-degree_list[i]), weights=reconst[i])
+            #fail_count = 0
             for j in to_nodes:
                 if degree_list[j] < theta[j] and i!=j:
                     S[i,j] = 1;S[j,i] = 1
                     degree_list[i]+=1;degree_list[j]+=1
+                else:
+                    #fail_count += 1
+                    #print(fail_count)
+                    continue
             count += 1 
         count_list.append(count)
     print("=== Degree comparison (actual vs target theta) ===")
@@ -339,6 +363,22 @@ def edge_construction_wo_ITS(n, U, k, U_primeT, theta, r):
         print(f"Node {i}: degree = {degree_list[i]}, theta = {theta[i]}")
 
     return S, count_list
+
+def count_edges_by_attribute(S, attribute):
+    from collections import defaultdict
+    edge_counts_by_attr = defaultdict(int)
+    cross_group_edges = 0
+
+    rows, cols = S.nonzero()
+    for i, j in zip(rows, cols):
+        if i < j:
+            if attribute[i] == attribute[j]:
+                edge_counts_by_attr[attribute[i]] += 1
+            else:
+                cross_group_edges += 1
+
+    return edge_counts_by_attr, cross_group_edges
+
     
 
 ##########################################################################################
@@ -588,6 +628,9 @@ def gencat_only_att(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_ty
 def gencat_by_attribute(n,m,k,d,max_deg,M,D,H,attribute,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False, p_by_group=None):
     # node degree generation
     theta = node_deg_by_group(attribute, n, m, max_deg, p_by_group)
+    if len(theta) < n:
+        print(f"[Warning] theta length ({len(theta)}) < n ({n}) — padding with zeros")
+    theta += [0] * (n - len(theta))
 #     line_warn(sum(theta)/2)
     
     # class generation
@@ -618,5 +661,11 @@ def gencat_by_attribute(n,m,k,d,max_deg,M,D,H,attribute,phi_c=1,omega=0.2,r=50,s
     
     # Attribute generation
     X = attribute_generation(n,d,k,U,V,C,omega,att_type)
+
+    counts, cross = count_edges_by_attribute(S_gen, attribute)
+    for group, cnt in counts.items():
+        print(f"Edges within group {group}: {cnt}")
+    print(f"Edges between groups: {cross}")
+
     
     return S_gen,X,C
