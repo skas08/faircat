@@ -177,22 +177,18 @@ def adjust(n,k,U,C,M):
     for l in range(k):
 #         Th=1
         loss_min = float('inf')
-     #   if  M[l][l] >= 1/k:
-        for Th in np.arange(0.01,1,0.05):
-            sum_estimated = np.zeros(k)
+        if  M[l][l] >= 1/k:
+            for Th in np.arange(0.01,1,0.05):
+                sum_estimated = np.zeros(k)
+                for i in partition[l]:
+                    sum_estimated += freez_func(U[i],Th) * freez_func(U[i],Th)
+                loss_tmp = la.norm(M[l]-sum_estimated/len(partition[l]))
+                if loss_tmp < loss_min:
+                    loss_min = loss_tmp
+                    Th_min = Th
             for i in partition[l]:
-                sum_estimated += freez_func(U[i],Th) * freez_func(U[i],Th)
-            loss_tmp = la.norm(M[l]-sum_estimated/len(partition[l])) # M[l] represents the target (desired) class connection behavior
-            if loss_tmp < loss_min:
-                loss_min = loss_tmp
-                Th_min = Th
-            # note from Suren: I am adding this because I was getting no Th_min because the threshold was not improved
-            if 'Th_min' not in locals():
-                Th_min = 1.0
-        for i in partition[l]:
-            U[i] = freez_func(U[i],Th_min)
-            U_prime[i] = U[i]
-        """    
+                U[i] = freez_func(U[i],Th_min)
+                U_prime[i] = U[i]
         else:
             for Th in np.arange(0.01,1,0.05):
                 sum_estimated = np.zeros(k)
@@ -205,8 +201,7 @@ def adjust(n,k,U,C,M):
             for i in partition[l]:
                 U[i] = freez_func(U[i],Th_min)
                 U_prime[i] = inverse(U[i],l)
-#         print(Th_min)"
-        """
+#         print(Th_min)
     return U, U_prime
         
 def edge_construction(n, U, k, U_prime, step, theta, r):
