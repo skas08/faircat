@@ -33,7 +33,7 @@ def node_deg(n,m,max_deg):
     print("expected number of edges : ",sum(simulated_data)/2)
     return sorted(simulated_data,reverse=True)
 
-def node_deg_by_group(attr, n, m, max_deg, p_by_group):
+def node_deg_by_group(attr, n, m, max_deg, p_by_group, max_deg_by_group=None):
     groups = np.unique(attr)
 
     # Allocate edge budget proportionally
@@ -59,22 +59,21 @@ def node_deg_by_group(attr, n, m, max_deg, p_by_group):
         idx = np.where(attr == g)[0]
         n_g = len(idx)
         m_g = group_edge_budgets[g]
-        print(m_g)
         p = p_by_group[g]
-        print(p)
+        max_deg_group = max_deg_by_group[g] if max_deg_by_group else max_deg
 
         simulated_data = [0]
         while sum(simulated_data) / 2 < m_g:
             dist = powerlaw.Power_Law(xmin=1., parameters=[p])
             simulated_data = dist.generate_random(n_g)
 
-            # Resample only those over max_deg
-            over_list = np.where(simulated_data > max_deg)[0]
+            # Resample only those over max_deg_by_group
+            over_list = np.where(simulated_data > max_deg_group)[0]
             while len(over_list) != 0:
                 add_deg = dist.generate_random(len(over_list))
                 for i, node_id in enumerate(over_list):
                     simulated_data[node_id] = add_deg[i]
-                over_list = np.where(simulated_data > max_deg)[0]
+                over_list = np.where(simulated_data > max_deg_group)[0]
 
             simulated_data = np.round(simulated_data)
 
@@ -86,8 +85,9 @@ def node_deg_by_group(attr, n, m, max_deg, p_by_group):
             if p < 1.01:
                 print(f"group {g} → break (p too small)")
                 break
+            print(f"Final p used for group {g}: {p}")
             print("expected number of edges for group", g, ":", sum(simulated_data) / 2)
-            theta_full[idx] = simulated_data  # <--- assign values to correct nodes
+        theta_full[idx] = simulated_data  # <--- assign values to correct nodes
 
     return theta_full.tolist()  # <--- return degree list for all n nodes
     print("expected number of edges : ",sum(simulated_data)/2)
@@ -621,9 +621,10 @@ def gencat_only_att(n,m,k,d,max_deg,M,D,H,phi_c=1,omega=0.2,r=50,step=100,att_ty
 
 
 ##################for per attribute value generation##########################
-def gencat_by_attribute(n,m,k,d,max_deg,M,D,H,attribute,phi_c=1,omega=0.2,r=50,step=100,att_type="normal",woAP=False,woITS=False, p_by_group=None):
+def gencat_by_attribute(n, m, k, d, max_deg, M, D, H, attribute, phi_c=1, omega=0.2, r=50, step=100, att_type="normal", woAP=False, woITS=False, p_by_group=None, max_deg_by_group=None):
     # node degree generation
-    theta = node_deg_by_group(attribute, n, m, max_deg, p_by_group)
+    theta = node_deg_by_group(attribute, n, m, max_deg, p_by_group, max_deg_by_group)
+
     if len(theta) < n:
         print(f"[Warning] theta length ({len(theta)}) < n ({n}) — padding with zeros")
     theta += [0] * (n - len(theta))
